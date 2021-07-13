@@ -1,17 +1,21 @@
-import requests
 import csv
+import glob
+import os
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
+import pandas as pd
+import requests
+
 
 base_url = "https://www.goodreads.com"
 
 # lists from https://www.goodreads.com/list/tag/most-ratings
 # hopefully enough to cover the majority of most people's bookshelves
 list_urls = [
-    # "https://www.goodreads.com/list/show/35857.The_Most_Popular_Fantasy_on_Goodreads",
-    "https://www.goodreads.com/list/show/35776.Most_Popular_Science_Fiction_on_goodreads",
-    "https://www.goodreads.com/list/show/36384.The_Most_Popular_Non_Fiction_on_Goodreads",
+    "https://www.goodreads.com/list/show/35857",
+    "https://www.goodreads.com/list/show/35776",
+    "https://www.goodreads.com/list/show/36384",
     "https://www.goodreads.com/list/show/141019",
     "https://www.goodreads.com/list/show/141016",
     "https://www.goodreads.com/list/show/141024",
@@ -45,21 +49,44 @@ def scrape_list_pages(list_url):
         scrape_list_pages(urljoin(base_url, next_page_link["href"]))
     
 
-for list_url in list_urls:
-    scrape_list_pages(list_url)
+def scrape_lists():
+    for list_url in list_urls:
+        scrape_list_pages(list_url)
 
 
-# with open('test.html') as file:
-#     content = file.read()
-#     soup = BeautifulSoup(content, "lxml")
-#     links = soup.find_all("a", {"class": "authorName"})
-#     hrefs = [link["href"] for link in links]
+def write_html_data_to_csv():
+    for filename in glob.glob('scrapes/*.html'):
+        with open(os.path.join(os.getcwd(), filename)) as file:
+            content = file.read()
+            soup = BeautifulSoup(content, "lxml")
+            links = soup.find_all("a", {"class": "authorName"})
+            hrefs = [link["href"] for link in links]
 
-#     def get_id_and_name(href):
-#         return href.split("/show/")[1].split(".")
+            def get_id_and_name(href):
+                return href.split("/show/")[1].split(".")
+            
+            rows = [get_id_and_name(href) for href in hrefs]
+
+            with open('output.csv', 'a') as csvfile:
+                csvwriter = csv.writer(csvfile) 
+                csvwriter.writerows(rows)
+
+
+def remove_duplicate_entries_in_csv():
+    df = pd.read_csv("output.csv", sep=",")
+    df.drop_duplicates(subset=None, inplace=True)
+    df.to_csv( "output_duplicates_removed.csv", index=False)
+
+
+def tidy_csv_data():
+    df = pd.read_csv("output_duplicates_removed.csv", sep=",")
+    first_name_initialized = df[df["name"].str.contains("^\w_")]
+    first_name_initialized.to_csv( "first_name_initialized.csv", index=False)
     
-#     rows = [get_id_and_name(href) for href in hrefs]
+def merge_manually_cleaned_data():
+    df_original = pd.read_csv("first_name_initialized.csv", sep=",")
+    df_clean = pd.read_csv("first_name_initialized_replaced.csv", sep=",")
+    merged = pd.merge(df_original, df_clean)
+    merged.to_csv( "merged.csv", index=False)
 
-#     with open('output.csv', 'a') as csvfile:
-#         csvwriter = csv.writer(csvfile) 
-#         csvwriter.writerows(rows)
+merge_manually_cleaned_data()
