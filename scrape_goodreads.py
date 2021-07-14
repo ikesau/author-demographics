@@ -73,20 +73,72 @@ def write_html_data_to_csv():
 
 
 def remove_duplicate_entries_in_csv():
-    df = pd.read_csv("output.csv", sep=",")
+    df = pd.read_csv("output.csv")
     df.drop_duplicates(subset=None, inplace=True)
     df.to_csv( "output_duplicates_removed.csv", index=False)
 
 
 def tidy_csv_data():
-    df = pd.read_csv("output_duplicates_removed.csv", sep=",")
+    df = pd.read_csv("output_duplicates_removed.csv")
     first_name_initialized = df[df["name"].str.contains("^\w_")]
     first_name_initialized.to_csv( "first_name_initialized.csv", index=False)
     
 def merge_manually_cleaned_data():
-    df_original = pd.read_csv("first_name_initialized.csv", sep=",")
-    df_clean = pd.read_csv("first_name_initialized_replaced.csv", sep=",")
-    merged = pd.merge(df_original, df_clean)
+    output_duplicates_removed = pd.read_csv("output_duplicates_removed.csv")
+    first_name_initialized_replaced = pd.read_csv("first_name_initialized_replaced.csv")
+    merged = pd.merge(output_duplicates_removed, first_name_initialized_replaced, on="id", how="left")
     merged.to_csv( "merged.csv", index=False)
 
-merge_manually_cleaned_data()
+def fetch_gender_prediction_for_names():
+    # conditionally create output file to allow for batching
+    if not os.path.isfile('predictions.csv'):
+        print("predictions.csv doesn't exist. cloning merged.csv")
+        df = pd.read_csv("merged.csv")
+        predictions = df.assign(
+            gender=None,
+            probability=None,
+            count=None,
+            api_name=None
+        )
+        predictions.to_csv("predictions.csv", sep=",", index=False)
+
+    predictions = pd.read_csv("predictions.csv")
+    predictions.fillna("", inplace=True)
+
+
+    def get_first_name(full_name):
+        if pd.isna(full_name):
+            return False
+        return full_name.split("_")[0]
+    
+    # for x in range(len(predictions)):
+    for x in range(0, 230):
+
+        endpoint = "https://api.genderize.io?"
+
+        # in batches of 10
+        for i in range(10):
+            row_index = i + x * 10
+            row = predictions.iloc[row_index]
+            name_x = row["name_x"]
+            name_y = row["name_y"]
+            first_name =  get_first_name(name_y) or get_first_name(name_x)
+
+            endpoint += f"name[]={first_name}&"
+
+        print(f"requesting :: {endpoint}")
+
+        response = requests.get(endpoint)
+        json = response.json()
+
+        for index, prediction in enumerate(json):
+            row_index = index + x * 10
+            predictions.at[row_index, "gender"] = prediction["gender"]
+            predictions.at[row_index, "api_name"] = prediction["name"]
+            predictions.at[row_index, "probability"] = prediction["probability"]
+            predictions.at[row_index, "count"] = prediction["count"]
+
+        predictions.to_csv("predictions.csv", sep=",", index=False)
+
+
+fetch_gender_prediction_for_names()
