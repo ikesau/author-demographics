@@ -141,4 +141,22 @@ def fetch_gender_prediction_for_names():
         predictions.to_csv("predictions.csv", sep=",", index=False)
 
 
-fetch_gender_prediction_for_names()
+def clean_predictions():
+    predictions = pd.read_csv("predictions.csv")
+    predictions = predictions.drop(axis="columns", labels=["name_y", "api_name"])
+    predictions = predictions.rename(columns={"name_x": "name"})
+    predictions.to_csv("predictions_clean.csv", index=False)
+
+
+
+def match_goodreads_export_with_clean_predictions():
+    export = pd.read_csv("my_goodreads_library_export.csv")
+    predictions = pd.read_csv("predictions_clean.csv")
+    predictions["Author"] = predictions["name"]
+    read = export.loc[export["Exclusive Shelf"] == "read", ["Book Id", "Author", "Title"]]
+    read["Author"] = read["Author"].str.replace(".", "_")
+    read["Author"] = read["Author"].str.replace(" ", "_")
+    read["Author"] = read["Author"].str.replace("__", "_")
+    join = pd.merge(read, predictions, how="left", on="Author")
+    join = join[join["count"] > 0]
+
